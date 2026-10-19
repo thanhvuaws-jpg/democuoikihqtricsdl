@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SkyFlight Airways ✈ Demo Điều Khiển Truy Xuất Đồng Thời — bản web</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="che-do-web.css">
+</head>
+<body>
+<header>
+  <div class="dau">
+    <div class="aero-brand-bar">
+      <div class="aero-logo-group">
+        <div class="aero-plane-badge" title="SkyFlight Concurrency Simulator">✈</div>
+        <div class="aero-titles">
+          <h1>SkyFlight Airways <span>&bull; AeroDB Concurrency Lab</span></h1>
+          <p>
+            <span>Hệ thống đặt vé máy bay &amp; điều khiển truy xuất đồng thời</span>
+            <span class="aero-flight-tag">CHUYẾN BAY VN-808</span>
+            <span class="aero-flight-tag">HAN ✈ SGN</span>
+          </p>
+        </div>
+      </div>
+      <div class="aero-meta-right">
+        <p id="tt-may-chu">Đang kết nối MySQL InnoDB…</p>
+        <button type="button" class="phu nut-an-dau" id="nut-an-dau"
+          title="Ẩn thanh trên cùng để xem demo không bị che">▲ Ẩn thanh trên</button>
+      </div>
+    </div>
+
+    <nav class="tab" role="tablist">
+      <button data-tab="xungdot" class="dang-chon"><span class="so-tab">1</span>⚡ 5 xung đột: sai và đúng</button>
+      <button data-tab="datve"><span class="so-tab">2</span>✈ Nhiều khách đặt vé</button>
+      <button data-tab="colap"><span class="so-tab">3</span>🔬 Ma trận mức cô lập</button>
+      <button data-tab="sosanh"><span class="so-tab">4</span>📊 So sánh hiệu năng</button>
+    </nav>
+  </div>
+</header>
+<button type="button" class="nut-hien-dau" id="nut-hien-dau" hidden
+  title="Hiện lại thanh trên cùng (tên ứng dụng và các tab)">▼ Hiện thanh trên</button>
+
+<main>
+  <!-- ===== bản web tĩnh ===== -->
+  <div class="bang-web" role="note">
+    <span class="bieu-tuong">🌐</span>
+    <div>
+      <b>Bản web xem trực tuyến</b> – trang này chỉ gồm HTML, CSS và JavaScript, không có máy chủ.
+      Mọi lịch giao tác, dữ liệu, bảng khóa và số đo thời gian là <b>kết quả đã chạy thật trên MySQL 9.6 /
+      InnoDB</b> rồi ghi lại; các ô cấu hình chỉ cho chọn những cấu hình đã chạy sẵn.
+      Muốn tự chạy trực tiếp trên MySQL: tải mã nguồn tại <a href="https://github.com/thanhvuaws-jpg/hequantricosodemodongthoi" target="_blank" rel="noopener">GitHub</a>
+      và nhấp đúp <code>khoi-dong.bat</code>.
+    </div>
+  </div>
+  <!-- ================================================== FLIGHT HERO SHOWCASE =================== -->
+  <div class="flight-hero-card" id="flight-hero-banner">
+    <div class="flight-hero-bg"></div>
+    <div class="flight-hero-overlay"></div>
+    <div class="flight-hero-content">
+      <div class="flight-hero-info">
+        <div class="flight-route-display">
+          <div class="airport-badge">
+            <span class="code">HAN</span>
+            <span class="city">Hà Nội (Nội Bài)</span>
+          </div>
+          <div class="route-flight-arrow">
+            <span class="flight-id">VN-808 &bull; 2H 15M</span>
+            <div class="plane-trail">
+              <span class="trail-line"></span>
+              <span class="plane-trail-icon">✈</span>
+              <span class="trail-line"></span>
+            </div>
+          </div>
+          <div class="airport-badge">
+            <span class="code">SGN</span>
+            <span class="city">TP. Hồ Chí Minh (Tân Sơn Nhất)</span>
+          </div>
+        </div>
+
+        <h2 class="flight-hero-title">Mô Phỏng Tranh Chấp Đặt Vé Máy Bay Trực Tuyến</h2>
+        <p class="flight-hero-desc">
+          Khi hàng chục hành khách cùng bấm <b>"Thanh Toán &amp; Giữ Chỗ"</b> tại cùng một mili-giây, làm sao cơ sở dữ liệu MySQL/InnoDB đảm bảo không bao giờ xảy ra tình trạng <b>bán vượt số ghế (Overbooking / Mất cập nhật)</b> và phòng chống <b>Deadlock</b>?
+        </p>
+
+        <div class="flight-pill-row">
+          <span class="flight-pill">Tàu bay: <b>Boeing 787-9 Dreamliner</b></span>
+          <span class="flight-pill">Cửa ra máy bay: <b>Gate B24</b></span>
+          <span class="flight-pill">Giờ bay: <b>14:30 - 16:45</b></span>
+          <span class="flight-pill">Cơ chế CSDL: <b>InnoDB MVCC &amp; Row-Level Locks</b></span>
+        </div>
+
+        <div class="flight-hero-actions">
+          <button class="hero-btn hero-btn-primary" onclick="chonTab('datve')">
+            <span>🚀 Thử nghiệm đặt vé nhiều khách (Tab 2)</span>
+          </button>
+          <button class="hero-btn hero-btn-secondary" onclick="chonTab('xungdot')">
+            <span>⚡ Xem 5 kịch bản xung đột (Tab 1)</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Right: Boarding Pass Interactive Card -->
+      <div class="ticket-preview-box" id="ticket-preview-box">
+        <div class="ticket-header-strip">
+          <div class="ticket-logo">
+            <span>✈</span> SKYFLIGHT AIRWAYS
+          </div>
+          <span class="ticket-class">CONCURRENCY CLASS</span>
+        </div>
+        <div class="ticket-flight-body">
+          <div class="ticket-field">
+            <span class="lbl">Hành khách</span>
+            <span class="val">ALEXANDER CHEN</span>
+          </div>
+          <div class="ticket-field">
+            <span class="lbl">Chuyến bay</span>
+            <span class="val" style="color:#38bdf8">VN-808</span>
+          </div>
+          <div class="ticket-field">
+            <span class="lbl">Cửa ra tàu bay</span>
+            <span class="val">B24</span>
+          </div>
+          <div class="ticket-field">
+            <span class="lbl">Ghế đã chọn</span>
+            <span class="val" style="color:#34d399">12A (Cửa sổ)</span>
+          </div>
+          <div class="ticket-field">
+            <span class="lbl">Giờ lên máy bay</span>
+            <span class="val">14:00</span>
+          </div>
+          <div class="ticket-field">
+            <span class="lbl">Trạng thái CSDL</span>
+            <span class="val" style="color:#00f2fe;font-size:12px">InnoDB Locked &bull; MVCC</span>
+          </div>
+        </div>
+        <div class="ticket-barcode-strip">
+          <div class="barcode-lines">
+            <span class="thick"></span><span class="thin"></span><span class="thick"></span>
+            <span class="thin"></span><span></span><span class="thick"></span>
+            <span class="thin"></span><span class="thick"></span><span></span>
+            <span class="thick"></span><span class="thin"></span><span class="thick"></span>
+            <span></span><span class="thick"></span><span class="thin"></span>
+          </div>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#94a3b8">VN808-TXN-2026</span>
+          <button class="phu" style="padding:3px 8px;font-size:11px" onclick="chonTab('datve')">Mô phỏng ➔</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================== TAB 1: 5 XUNG ĐỘT ======= -->
+  <section id="tab-xungdot">
+    <div class="the">
+      <h2>⚡ 5 Xung Đột Kinh Điển – Kịch bản SAI và Kịch bản ĐÚNG</h2>
+      <p class="phu-de">Hai phiên giao tác A và B chạy xen kẽ trên MySQL 9.6 thật. Sau mỗi bước, hệ thống chụp lại dữ liệu và bảng khóa của InnoDB, rồi phát lại thành hoạt hình: code mỗi phiên đang chạy tới đâu, dữ liệu thay đổi thế nào, ai đang giữ khóa nào.</p>
+      <div class="ds-xd" id="xd-ds"></div>
+    </div>
+
+    <div class="the" id="xd-the">
+      <div class="xd-dau">
+        <div style="min-width:0">
+          <h2 id="xd-ten">Đang tải…</h2>
+          <p class="phu-de" id="xd-van-de" style="margin-bottom:0"></p>
+        </div>
+        <div class="chon-kb" id="xd-chon-kb">
+          <button data-loai="sai" class="kb-sai"><b>✗ Kịch bản SAI</b><span></span></button>
+          <button data-loai="dung" class="kb-dung"><b>✓ Kịch bản ĐÚNG</b><span></span></button>
+        </div>
+      </div>
+      <div class="xd-cach-lam" id="xd-cach-lam"></div>
+
+      <details class="xd-huong-dan" id="xd-huong-dan" open>
+        <summary>❓ Cách đọc màn hình này</summary>
+        <div class="hd-luoi">
+          <div class="hd-o">
+            <div class="hd-so">1</div>
+            <b>Bảng giữa là "lịch giao tác"</b>
+            <p>Đọc từ trên xuống như dòng thời gian. Mỗi hàng là một thời điểm <code>t1, t2…</code>; cột trái là việc
+              phiên A làm, cột phải là việc phiên B làm – giống hệt cách vẽ lịch giao tác T₁, T₂ trên bảng.</p>
+          </div>
+          <div class="hd-o">
+            <div class="hd-so">2</div>
+            <b>Thanh dọc = giao tác đang mở</b>
+            <p><span class="hd-song A"></span> giao tác của A đang mở &nbsp; <span class="hd-song B"></span> của B &nbsp;
+              <span class="hd-song cho"></span> đang bị chặn, chờ khóa. Hai thanh chạy song song nghĩa là hai giao tác
+              đang <b>đồng thời</b>.</p>
+          </div>
+          <div class="hd-o">
+            <div class="hd-so">3</div>
+            <b>Bên phải là dữ liệu thật trong InnoDB</b>
+            <p><span class="gt-cu">7</span><span class="gt-moi">0</span> = đã commit → bản nháp chưa commit.
+              🔒 = khóa đang giữ, ⏳ = đang chờ khóa. Rê chuột lên khóa để xem giải thích.</p>
+          </div>
+        </div>
+      </details>
+
+      <div class="dieu-khien-phat">
+        <button class="phu nut-vuong" id="xd-dau" title="Về đầu (Home)">⏮</button>
+        <button class="phu nut-vuong" id="xd-lui" title="Lùi một bước (←)">◀</button>
+        <button id="xd-phat" class="nut-phat">▶ Phát hoạt hình</button>
+        <button class="phu nut-vuong" id="xd-tien" title="Bước tiếp (→)">▶|</button>
+        <button class="phu nut-vuong" id="xd-cuoi" title="Tới cuối (End)">⏭</button>
+        <div class="toc-do" id="xd-toc-do"><span>Tốc độ:</span>
+          <button data-v="0.5">0.5×</button><button data-v="1" class="dang-chon">1×</button><button data-v="2">2×</button>
+        </div>
+        <span class="dem" id="xd-dem"></span>
+        <span style="flex:1"></span>
+        <button class="phu" id="xd-chay-lai" title="Chạy lại kịch bản trên MySQL">↻ Chạy lại trên MySQL</button>
+        <span class="trang-thai" id="xd-trang-thai"></span>
+      </div>
+      <div class="tien-do" id="xd-tien-do"></div>
+      <div class="loi-dan" id="xd-loi-dan">Chọn một kịch bản để bắt đầu.</div>
+      <div class="giai-thich-buoc" id="xd-giai-thich"></div>
+      <div class="lich-ky-hieu" id="xd-lich"></div>
+
+      <div class="san-khau-lich" id="xd-san-khau">
+        <div class="lich-gt" id="xd-lich-gt"></div>
+        <div class="csdl" id="xd-csdl"></div>
+        <div class="lop-hoat-hinh" id="xd-lop" aria-hidden="true"></div>
+      </div>
+      <div id="xd-ket-luan"></div>
+    </div>
+
+    <div class="the an" id="xd-the-ss">
+      <h2>So sánh hai kịch bản</h2>
+      <div id="xd-so-sanh"></div>
+    </div>
+  </section>
+
+  <!-- ================================================== TAB 2: ĐẶT VÉ ============ -->
+  <section id="tab-datve" hidden>
+    <div class="the">
+      <h2>✈ Nhiều Khách Cùng Đặt Vé Máy Bay Chuyến VN-808</h2>
+      <p class="phu-de">Mỗi khách hàng là một luồng (thread) với kết nối MySQL riêng. Tất cả cùng xuất phát đồng thời tại mili-giây thứ 0 để tranh nhau số ghế có hạn trên chuyến bay.</p>
+      
+      <div class="dieu-khien">
+        <div class="o"><label for="dv-che-do">Phương pháp xử lý tranh chấp</label><select id="dv-che-do" style="min-width:300px"></select></div>
+        <div class="o"><label for="dv-so-khach">Số hành khách đặt vé</label><input type="number" id="dv-so-khach" value="10" min="1" max="60"></div>
+        <div class="o"><label for="dv-ton-kho">Số ghế mở bán</label><input type="number" id="dv-ton-kho" value="5" min="1" max="500"></div>
+        <div class="o"><label for="dv-think">Thời gian cân nhắc (ms)</label><input type="number" id="dv-think" value="100" min="0" max="2000" step="10"></div>
+        <div class="o"><label for="dv-muc">Mức cô lập</label><select id="dv-muc"><option value="">Mặc định (REPEATABLE READ)</option></select></div>
+        <button id="dv-chay">🚀 Chạy mô phỏng đặt vé</button>
+        <span class="trang-thai" id="dv-trang-thai"></span>
+      </div>
+      
+      <div class="mo-ta-che-do">
+        <p id="dv-mo-ta"></p>
+        <pre class="ma-sql" id="dv-ma"></pre>
+      </div>
+    </div>
+
+    <div class="the an" id="dv-the-kq">
+      <h2>Kết quả mô phỏng</h2>
+      <div class="the-so" id="dv-so"></div>
+      <div class="ket-luan" id="dv-ket-luan"></div>
+    </div>
+
+    <!-- NEW: Interactive Aircraft Cabin Seat Map -->
+    <div class="the an" id="dv-the-cabin">
+      <div class="cabin-top-bar">
+        <div>
+          <h2 style="margin:0">✈ Sơ Đồ Khoang Ghế Máy Bay VN-808 (Interactive Cabin Seat Map)</h2>
+          <p class="phu-de" style="margin:4px 0 0">Trực quan hóa trạng thái từng ghế. Bấm vào bất kỳ ghế nào để xem <b>Vé máy bay (Boarding Pass)</b> tương ứng.</p>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+        </div>
+      </div>
+
+      <div class="cabin-container">
+        <div class="cabin-top-bar" style="border:none;margin-bottom:8px;padding-bottom:0">
+          <div class="cabin-legend">
+            <span class="cabin-legend-item"><i class="seat-sample" style="background:#10b981"></i> Đã đặt thành công</span>
+            <span class="cabin-legend-item"><i class="seat-sample" style="background:#f43f5e"></i> Bán vượt / Tranh chấp (Lost Update)</span>
+            <span class="cabin-legend-item"><i class="seat-sample" style="background:#64748b"></i> Ghế còn trống</span>
+            <span class="cabin-legend-item"><i class="seat-sample" style="background:#a855f7"></i> Khóa Deadlock (12A / 12B)</span>
+          </div>
+          <span style="font-size:12px;color:#94a3b8" id="cabin-status-tag">Tàu bay: Boeing 787-9 Dreamliner</span>
+        </div>
+
+        <div class="fuselage-wrapper">
+          <div class="airplane-nose">✈ COCKPIT</div>
+          <div class="airplane-cabin-body">
+            <div class="cabin-seats-grid" id="cabin-seats-grid"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="the an" id="dv-the-tl">
+      <h2>Diễn biến bên trong cơ sở dữ liệu</h2>
+      <p class="phu-de">Mỗi hàng là một giao tác. Rê chuột lên một đoạn để xem câu SQL; đoạn đỏ cho biết bị ai chặn. Kéo thanh thời gian để xem từng khoảnh khắc.</p>
+      <div class="chu-giai" id="dv-chu-giai"></div>
+      <div id="timeline"></div>
+      <div class="tua">
+        <button class="phu" id="dv-phat">▶ Phát lại</button>
+        <input type="range" id="dv-tua" min="0" max="100" value="0" step="0.5" aria-label="Thời điểm">
+        <span class="moc-t" id="dv-moc">0 ms</span>
+      </div>
+      <div class="tai-thoi-diem" id="dv-tai-t"></div>
+    </div>
+
+    <div class="the an" id="dv-the-khoa">
+      <h2>Các khóa InnoDB đã đặt</h2>
+      <p class="phu-de">Lấy mẫu mỗi 25 ms từ <code>performance_schema.data_locks</code> trong lúc kịch bản chạy.</p>
+      <div class="cuon"><table id="dv-bang-khoa"></table></div>
+    </div>
+
+    <div class="the an" id="dv-the-log">
+      <h2>Nhật ký câu lệnh SQL</h2>
+      <div class="dieu-khien" style="margin-bottom:10px">
+        <div class="o"><label for="dv-loc">Lọc theo hành khách</label><select id="dv-loc"><option value="">Tất cả hành khách</option></select></div>
+      </div>
+      <div class="cuon"><table id="dv-bang-log"></table></div>
+    </div>
+  </section>
+
+  <!-- ================================================== TAB 3: MỨC CÔ LẬP ======= -->
+  <section id="tab-colap" hidden>
+    <div class="lab">
+      <div class="the" style="margin:0">
+        <h2>Phòng Thí Nghiệm Cô Lập</h2>
+        <p class="phu-de">Hai phiên A và B chạy xen kẽ từng bước, giống hai cửa sổ <code>mysql</code> mở cạnh nhau.</p>
+        <div class="ds-tn" id="cl-ds"></div>
+        <div class="nhom">
+          <label>Mức cô lập cho cả hai phiên</label>
+          <div class="phan-doan" id="cl-muc"></div>
+        </div>
+        <div class="nhom" style="display:flex;flex-direction:column;gap:8px">
+          <button id="cl-chay">Chạy thí nghiệm</button>
+          <button class="phu" id="cl-ma-tran">Chạy toàn bộ ma trận (khoảng 25 giây)</button>
+          <span class="trang-thai" id="cl-trang-thai"></span>
+        </div>
+      </div>
+
+      <div>
+        <div class="the an" id="cl-the-mt">
+          <h2>Ma trận: hiện tượng nào xảy ra ở mức nào?</h2>
+          <p class="phu-de">Kết quả đo thật trên MySQL, đặt cạnh lý thuyết chuẩn SQL. Bấm vào một ô để xem chi tiết.</p>
+          <div id="cl-bang-mt"></div>
+        </div>
+
+        <div class="the" id="cl-the-kq">
+          <h2 id="cl-tieu-de">Chọn một thí nghiệm và bấm Chạy</h2>
+          <p class="phu-de" id="cl-tom-tat"></p>
+          <div id="cl-ket-luan"></div>
+          <details id="cl-du-lieu" style="margin-top:12px;font-size:12.5px"><summary style="cursor:pointer;color:var(--mo)">Dữ liệu ban đầu</summary><div id="cl-du-lieu-nd"></div></details>
+          <div class="dieu-khien-buoc an" id="cl-dk">
+            <button class="phu" id="cl-lui">◀ Lùi</button>
+            <button id="cl-tien">Bước tiếp ▶</button>
+            <button class="phu" id="cl-het">Hiện tất cả</button>
+            <span class="dem" id="cl-dem"></span>
+          </div>
+          <div id="cl-lan"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================== TAB 4: SO SÁNH ========== -->
+  <section id="tab-sosanh" hidden>
+    <div class="the">
+      <h2>So Sánh 4 Phương Pháp Trong Cùng Điều Kiện</h2>
+      <p class="phu-de">Mỗi phương pháp chạy lặp lại nhiều lần rồi lấy trung bình, để loại bớt sai số ngẫu nhiên.</p>
+      <div class="dieu-khien">
+        <div class="o"><label for="ss-so-khach">Số hành khách</label><input type="number" id="ss-so-khach" value="10" min="1" max="60"></div>
+        <div class="o"><label for="ss-ton-kho">Số ghế mở bán</label><input type="number" id="ss-ton-kho" value="5" min="1" max="500"></div>
+        <div class="o"><label for="ss-think">Cân nhắc (ms)</label><input type="number" id="ss-think" value="80" min="0" max="2000"></div>
+        <div class="o"><label for="ss-lan">Số lần lặp</label><input type="number" id="ss-lan" value="3" min="1" max="10"></div>
+        <button id="ss-chay">So sánh hiệu năng</button>
+        <span class="trang-thai" id="ss-trang-thai"></span>
+      </div>
+      <div id="ss-kq" class="an" style="margin-top:16px">
+        <div class="luoi-bieu-do" id="ss-bieu-do"></div>
+        <div class="cuon" style="margin-top:14px;max-height:none"><table id="ss-bang"></table></div>
+        <div class="ket-luan trung" id="ss-nhan-xet"></div>
+      </div>
+    </div>
+
+    <div class="the">
+      <h2>Khảo Sát Độ Co Giãn (Scalability) Khi Tăng Lượng Khách</h2>
+      <p class="phu-de">Số ghế luôn bằng một nửa số khách. Cho thấy phương pháp nào giữ vững tính toàn vẹn và chịu tải tốt khi tranh chấp tăng cao.</p>
+      <div class="dieu-khien">
+        <div class="o"><label for="ks-muc">Các mức số khách</label><input type="text" id="ks-muc" value="5, 10, 20, 40" style="width:160px"></div>
+        <div class="o"><label for="ks-think">Cân nhắc (ms)</label><input type="number" id="ks-think" value="50" min="0" max="500"></div>
+        <button id="ks-chay">Khảo sát chịu tải</button>
+        <span class="trang-thai" id="ks-trang-thai"></span>
+      </div>
+      <div id="ks-kq" class="an" style="margin-top:16px">
+        <div class="luoi-bieu-do" id="ks-bieu-do"></div>
+        <div class="cuon" style="margin-top:14px;max-height:none"><table id="ks-bang"></table></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- Tooltip chú thích -->
+<div id="hop-thoai" role="tooltip"></div>
+
+<!-- Modal xem vé máy bay điện tử (Digital Boarding Pass) -->
+<div class="modal-overlay an" id="modal-ve-may-bay">
+  <div class="boarding-pass-modal">
+    <div class="modal-header-bar">
+      <span>✈ VÉ MÁY BAY ĐIỆN TỬ &bull; SKYFLIGHT AIRWAYS</span>
+      <button class="modal-close-btn" id="modal-ve-close">&times;</button>
+    </div>
+    <div class="modal-pass-body" id="modal-ve-content"></div>
+  </div>
+</div>
+
+<script src="chung.js"></script>
+<script src="che-do-web.js"></script>
+<script src="tab-xungdot.js"></script>
+<script src="tab-datve.js"></script>
+<script src="tab-colap.js"></script>
+<script src="tab-sosanh.js"></script>
+</body>
+</html>
