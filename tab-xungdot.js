@@ -21,6 +21,9 @@
   let dang_phat = false;
   let hen = null;
   let luot_hoat_hinh = 0;     // tăng mỗi khi đổi khung, để hủy hoạt hình cũ còn dở
+  let THU_TUC = null;         // thủ tục T1/T2 để tự chạy trên phpMyAdmin (GET /api/thu-tuc)
+  let che_do_xem = "mysql";   // "mysql" = hai cửa sổ dòng lệnh + màn hình dưới CSDL; "lich" = lịch giao tác 2 cột
+  try { if (localStorage.getItem("xd-che-do") === "lich") che_do_xem = "lich"; } catch { /* mặc định */ }
 
   const TEN_PHIEN = { A: "Quầy vé A", B: "App di động B" };
   const khoaBN = (m, l) => `${m}:${l}`;
@@ -29,7 +32,7 @@
   const manHinhHep = () => matchMedia("(max-width: 1080px)").matches;
   const kia = p => (p === "A" ? "B" : "A");
 
-  const TU_KHOA = /\b(SET SESSION TRANSACTION ISOLATION LEVEL|START TRANSACTION|SELECT|FROM|WHERE|FOR UPDATE|UPDATE|SET|INSERT INTO|VALUES|COMMIT|ROLLBACK|AND|ORDER BY|COUNT)\b/g;
+  const TU_KHOA = /\b(SET SESSION TRANSACTION ISOLATION LEVEL|START TRANSACTION|SELECT|FROM|WHERE|FOR UPDATE|FOR SHARE|UPDATE|SET|INSERT INTO|DELETE|VALUES|COMMIT|ROLLBACK|AND|OR|ORDER BY|GROUP BY|LIMIT|COUNT|SHOW|DESCRIBE|EXPLAIN|JOIN|ON|AS)\b/g;
   const toMauSql = sql => esc(sql).replace(TU_KHOA, '<span class="tk">$1</span>');
 
   /* ------------------------------------------------------------ nạp & chọn */
@@ -39,6 +42,8 @@
       DS = d.xung_dot;
       veDanhSach();
       chon(ma, loai);
+      goiApi("/api/thu-tuc").then(t => { THU_TUC = t; veThuTuc(); })
+        .catch(e => { $("#xd-pma").innerHTML = `<div class="ket-luan trung">Không tải được thủ tục: ${esc(e.message)}</div>`; });
     } catch (e) {
       $("#xd-loi-dan").textContent = "Không tải được danh sách xung đột: " + e.message;
     }
@@ -73,6 +78,8 @@
     $("#xd-cach-lam").innerHTML = `<b>${loai === "sai" ? "Cách làm SAI" : "Cách làm ĐÚNG"}:</b> ${esc(kb.cach_lam)}
       &nbsp;·&nbsp; Mức cô lập của cả hai phiên: <code>${esc(kb.muc_co_lap)}</code>`;
     veSoSanh();
+    veMaNguon();
+    veThuTuc();
 
     const da_co = bo_nho[khoaBN(ma, loai)];
     if (da_co && !chay_lai) {
@@ -95,6 +102,11 @@
     $("#xd-dem").textContent = "";
     $("#xd-loi-dan").innerHTML = `<span class="phu-ld">Đang chạy kịch bản trên MySQL…</span>`;
     $("#xd-lich-gt").innerHTML = `<div class="lgt-cho">Đang chạy hai phiên A và B trên MySQL 9.6…</div>`;
+    for (const p of ["A", "B"]) {
+      $(`#xd-term-${p}`).innerHTML = dauTerm(`Phiên ${p} · ${TEN_PHIEN[p]}`, "mysql -u root demo_dongthoi", "", "")
+        + `<div class="term-than"><div class="t-ra t-cho"><span class="t-xoay"></span> đang chạy kịch bản trên MySQL 9.6…</div></div>`;
+    }
+    $("#xd-qs").innerHTML = dauTerm("🗄 Dưới CSDL", "đang chờ kết quả…", "", "") + `<div class="term-than"></div>`;
     $("#xd-csdl").innerHTML = `<div class="dau-p"><b>🗄️ CSDL Trung Tâm SkyRoute – MySQL 9.6 InnoDB Engine</b></div>
       <div class="than"><div class="hang-doi trong">Bảng: ${x.bang.map(b => `<code>${esc(b)}</code>`).join(", ")}</div></div>`;
   }
@@ -176,18 +188,19 @@
     $("#xd-giai-thich").innerHTML = `<span class="gtb-icon">💡</span><div><b>Chuyện gì vừa xảy ra?</b> ${giaiThich(e)}</div>`;
     $("#xd-lich").innerHTML = veKyHieu();
     $$("#xd-lich .kh-chip").forEach(c => c.addEventListener("click", () => { dungPhat(); toi(+c.dataset.k); }));
-    $("#xd-san-khau").className = "san-khau-lich " + (kq.loai === "sai" ? "kb-la-sai" : "kb-la-dung");
-    $("#xd-lich-gt").innerHTML = veLichGiaoTac(e);
-    $("#xd-csdl").innerHTML = veCsdl(e);
-    $$("#xd-san-khau [data-tip]").forEach(el => {
-      el.addEventListener("mousemove", ev => hienHop(ev, esc(el.dataset.tip).replace(/\n/g, "<br>")));
-      el.addEventListener("mouseleave", anHop);
-    });
-    $$("#xd-lich-gt .lgt-dong[data-k]").forEach(d => d.addEventListener("click", () => { dungPhat(); toi(+d.dataset.k); }));
 
     $("#xd-ket-luan").innerHTML = khung === N() ? veKetLuan() : "";
     const nut_kia = $("#xd-sang-kia");
     if (nut_kia) nut_kia.addEventListener("click", () => chon(ma, kq.loai === "sai" ? "dung" : "sai"));
+
+    $("#xd-lop").innerHTML = "";
+    if (che_do_xem === "mysql") { veManHinhMysql(e, hoat_hinh); return; }
+
+    $("#xd-san-khau").className = "san-khau-lich " + (kq.loai === "sai" ? "kb-la-sai" : "kb-la-dung");
+    $("#xd-lich-gt").innerHTML = veLichGiaoTac(e);
+    $("#xd-csdl").innerHTML = veCsdl(e);
+    ganChuThich("#xd-san-khau");
+    $$("#xd-lich-gt .lgt-dong[data-k]").forEach(d => d.addEventListener("click", () => { dungPhat(); toi(+d.dataset.k); }));
 
     // giữ dòng đang xem trong tầm nhìn khi bảng dài hơn màn hình
     const dong_hien = $("#xd-lich-gt .lgt-dong.hien");
@@ -196,9 +209,16 @@
       if (r.bottom > innerHeight - 20 || r.top < 150) dong_hien.scrollIntoView({ block: "center", behavior: "smooth" });
     }
 
-    $("#xd-lop").innerHTML = "";
     if (hoat_hinh && e) setTimeout(() => hoatHinh(e), 30);
     else veVienCho();
+  }
+
+  /** Rê chuột lên các phần tử có data-tip trong vùng goc để xem giải thích. */
+  function ganChuThich(goc) {
+    $$(`${goc} [data-tip]`).forEach(el => {
+      el.addEventListener("mousemove", ev => hienHop(ev, esc(el.dataset.tip).replace(/\n/g, "<br>")));
+      el.addEventListener("mouseleave", anHop);
+    });
   }
 
   /* ------------------------------------------------------------ lời dẫn & giải thích */
@@ -576,6 +596,421 @@
     return html + `</div>`;
   }
 
+  /* ------------------------------------------------------------ màn hình MySQL
+   * Mỗi phiên là một cửa sổ dòng lệnh `mysql>`: câu SQL được gõ vào, rồi kết quả MySQL trả về hiện ra
+   * đúng định dạng của mysql client. Bên dưới là "màn hình dưới CSDL": nội dung bảng và data_locks
+   * ngay sau bước đang xem (ảnh chụp thật từ InnoDB). */
+  const dai = s => [...String(s)].length;
+  const chuO = v => (v === null || v === undefined ? "NULL" : String(v));
+  const laSo = v => typeof v === "number";
+  const giay = ms => `(${(Math.max(0, ms || 0) / 1000).toFixed(2)} sec)`;
+  const SQLSTATE = { 1205: "HY000", 1213: "40001", 1062: "23000", 1064: "42000", 1146: "42S02", 1054: "42S22", 3024: "HY000" };
+  const soDong = n => `${n} row${n === 1 ? "" : "s"}`;
+  const loiMysql = l => `<span class="t-loi">ERROR ${esc(l.ma)} (${SQLSTATE[l.ma] || "HY000"}): ${esc(l.thong_diep)}</span>`;
+
+  /** Bảng kết quả kiểu mysql client.  hang: [{o: [{t, so, lop}], lop, duoi}] – `duoi` là ghi chú sau dòng. */
+  function bangAscii(cot, hang) {
+    const w = cot.map((c, i) => Math.max(dai(c), ...hang.map(h => dai(h.o[i].t))));
+    const ke = "+" + w.map(x => "-".repeat(x + 2)).join("+") + "+";
+    const dau = "|" + cot.map((c, i) => ` ${esc(c)}${" ".repeat(w[i] - dai(c))} `).join("|") + "|";
+    const than = hang.map(h => {
+      const o = h.o.map((x, i) => {
+        const dem = " ".repeat(w[i] - dai(x.t));
+        const noi = x.so ? dem + esc(x.t) : esc(x.t) + dem;
+        return " " + (x.lop ? `<span class="${x.lop}">${noi}</span>` : noi) + " ";
+      }).join("|");
+      return `<span class="${h.lop || ""}">|${o}|</span>${h.duoi || ""}`;
+    });
+    return `<span class="t-bang">${[ke, dau, ke, ...than, ke].join("\n")}</span>`;
+  }
+
+  const bangTuDong = (cot, dong) => bangAscii(cot, dong.map(d => ({ o: cot.map(c => ({ t: chuO(d[c]), so: laSo(d[c]) })) })));
+
+  /** Kết quả mysql client in ra cho một câu lệnh đã chạy xong. */
+  function ketQuaMysql(e) {
+    const r = e.ket_qua || {};
+    if (r.loi) return loiMysql(r.loi);
+    const lenh = lenhCua(e.sql);
+    if (["SELECT", "SHOW", "WITH"].includes(lenh)) {
+      const ds = r.dong || [];
+      if (!ds.length) return `Empty set ${giay(r.thoi_gian_ms)}`;
+      return `${bangTuDong(Object.keys(ds[0]), ds)}\n${soDong(ds.length)} in set ${giay(r.thoi_gian_ms)}`;
+    }
+    if (lenh === "UPDATE" || lenh === "DELETE") {
+      const n = r.so_dong_doi ?? r.so_dong ?? 0;
+      let s = `Query OK, ${soDong(n)} affected ${giay(r.thoi_gian_ms)}`;
+      if (lenh === "UPDATE" && r.so_dong_khop != null) {
+        const la = r.so_dong_khop !== r.so_dong_doi || r.so_dong_khop === 0;
+        s += `\n<span class="${la ? "t-canh" : ""}">Rows matched: ${r.so_dong_khop}  Changed: ${r.so_dong_doi}  Warnings: 0</span>`;
+      }
+      return s;
+    }
+    if (lenh === "INSERT") return `Query OK, ${soDong(r.so_dong ?? 1)} affected ${giay(r.thoi_gian_ms)}`;
+    return `Query OK, 0 rows affected ${giay(r.thoi_gian_ms)}`;
+  }
+
+  function dauTerm(tieu_de, phu, lop_tt, chu_tt) {
+    return `<div class="term-dau"><span class="cham-mau"><i></i><i></i><i></i></span><b>${tieu_de}</b>
+      <span class="term-phu">${phu}</span><span style="flex:1"></span>${chu_tt ? `<span class="tt-phien ${lop_tt}">${chu_tt}</span>` : ""}</div>`;
+  }
+
+  const nhanDiem = () => `<span class="t-diem ${kq.loai}">${kq.loai === "sai" ? "← nguyên nhân" : "← cách sửa"}</span>`;
+
+  /** Một câu lệnh trong cửa sổ của phiên p.  ds_e: các sự kiện cùng mã bước (bị chặn → chạy tiếp…). */
+  function khoiLenh(p, ma_b, ds_e, e_hien) {
+    const cuoi = ds_e[ds_e.length - 1];
+    const d = (kq.ma_nguon[p] || []).find(x => x.ma === ma_b);
+    const hien = e_hien && ds_e.includes(e_hien);
+    const sql = cuoi.loai === "hoan" ? (d?.sql || cuoi.sql) : cuoi.sql;
+    const the = (cuoi.ky_hieu ? `<span class="t-kh">${esc(cuoi.ky_hieu)}</span>` : "") + (d?.diem_khac ? nhanDiem() : "");
+    let html = `<div class="khoi ${hien ? "hien" : ""} ${cuoi.loai}" data-k="${cuoi.thu_tu}">
+      <div class="t-chu-thich">-- t${ds_e[0].thu_tu} · ${esc(cuoi.mo_ta)}</div>`;
+    if (cuoi.loai === "hoan") {
+      return html + `<div class="t-lenh t-hoan"><span class="t-nhac">  ⏸  </span><span class="t-sql">${toMauSql(sql)};</span></div>
+        <div class="t-ra t-mo">   xếp hàng – kết nối còn bận chờ câu lệnh phía trên trả về, chưa gửi được</div></div>`;
+    }
+    html += `<div class="t-lenh"><span class="t-nhac">mysql&gt;</span> <span class="t-sql" data-sql="${esc(sql + ";")}">${toMauSql(sql)};</span>${the}</div>`;
+    if (cuoi.loai === "bi_chan") {
+      const ai = (cuoi.cho || []).filter(c => c.phien_cho === p).map(c => c.phien_giu);
+      html += `<div class="t-ra t-cho"><span class="t-xoay"></span>đang chờ khóa${ai.length ? ` do phiên ${ai.join(", ")} giữ` : ""}… (câu lệnh chưa trả về)</div>`;
+    } else if (cuoi.loai === "bo_qua") {
+      html += `<div class="t-ra t-mo">-- bỏ qua</div>`;
+    } else {
+      const tiep = cuoi.loai === "xong_sau_chan"
+        ? `<span class="t-tiep">▶ hết chờ sau ${so(cuoi.ket_qua?.thoi_gian_ms)} ms – phiên ${kia(p)} đã nhả khóa</span>\n` : "";
+      html += `<div class="t-ra">${tiep}${ketQuaMysql(cuoi)}</div>`;
+    }
+    return html + `</div>`;
+  }
+
+  function veTerm(p, e_hien) {
+    const ch = (kq.ma_nguon[p] || []).find(d => d.la_cau_hinh);
+    const thu_tu = [], nhom = {};
+    for (let j = 0; j < khung; j++) {
+      const e = kq.nhat_ky[j];
+      if (e.phien !== p) continue;
+      if (!nhom[e.ma]) { nhom[e.ma] = []; thu_tu.push(e.ma); }
+      nhom[e.ma].push(e);
+    }
+    const [lop_tt, chu_tt] = trangThaiPhien(p);
+    const dang_chan = Object.values(nhom).some(ds => ds[ds.length - 1].loai === "bi_chan");
+    let than = `<div class="t-mo">Đã kết nối MySQL 9.6 · CSDL demo_dongthoi · kết nối riêng của phiên ${p}</div>`;
+    if (ch) {
+      than += `<div class="khoi cau-hinh"><div class="t-chu-thich">-- t0 · ${esc(ch.mo_ta)}</div>
+        <div class="t-lenh"><span class="t-nhac">mysql&gt;</span> <span class="t-sql">${toMauSql(ch.sql)};</span>${ch.diem_khac ? nhanDiem() : ""}</div>
+        <div class="t-ra">Query OK, 0 rows affected (0.00 sec)</div></div>`;
+    }
+    let da_kiem_tra = false;
+    for (const m of thu_tu) {
+      if (m.startsWith("K") && !da_kiem_tra) {
+        da_kiem_tra = true;
+        than += `<div class="t-chu-thich t-kiem-tra">-- ===== cả hai giao tác đã kết thúc – đọc lại để kiểm tra =====</div>`;
+      }
+      than += khoiLenh(p, m, nhom[m], e_hien);
+    }
+    if (!dang_chan) than += `<div class="t-lenh t-cho-go"><span class="t-nhac">mysql&gt;</span> <span class="con-tro"></span></div>`;
+    return dauTerm(`Phiên ${p} · ${TEN_PHIEN[p]}`, `${p === "A" ? "T₁" : "T₂"} · mysql -u root demo_dongthoi`, lop_tt, chu_tt)
+      + `<div class="term-than">${than}</div>`;
+  }
+
+  /** Một bảng dưới CSDL: bản mới nhất trong InnoDB, ô có bản nháp hiện "đã commit→nháp". */
+  function bangDuoiCsdl(ten, t, t_truoc, khoa) {
+    if (!t) return "";
+    const pk = t.khoa_chinh;
+    const commit = new Map(t.da_commit.map(d => [String(d[pk]), d]));
+    const truoc = t_truoc ? new Map(t_truoc.moi_nhat.map(d => [String(d[pk]), d])) : null;
+    const cot = Object.keys(t.moi_nhat[0] || t.da_commit[0] || {});
+    if (!cot.length) return "Empty set (0.00 sec)";
+    const khoa_dong = {};
+    for (const k of khoa) {
+      if (k.loai_khoa === "RECORD" && k.bang === ten) (khoa_dong[khoaChinhCuaKhoa(k)] ||= []).push(k);
+    }
+    const dang_chen = khoa.find(k => k.bang === ten && k.trang_thai === "WAITING" && k.che_do_khoa.includes("INSERT_INTENTION"));
+    const hang = [];
+    for (const d of t.moi_nhat) {
+      const key = String(d[pk]);
+      const c = commit.get(key);
+      const o = cot.map(col => {
+        const v = d[col];
+        const nhap = c && c[col] !== v;
+        const doi = truoc && (!truoc.get(key) || truoc.get(key)[col] !== v);
+        return { t: nhap ? `${chuO(c[col])}→${chuO(v)}` : chuO(v), so: laSo(v),
+                 lop: [nhap || !c ? "t-nhap" : "", doi ? "t-vua-doi" : ""].join(" ").trim() };
+      });
+      const ghi = [];
+      if (!c) ghi.push(`<span class="t-nhap-chu">+ dòng mới${dang_chen ? ` – ${esc(dang_chen.phien)} đang chèn dở` : ""}, chưa commit</span>`);
+      else if (cot.some(col => c[col] !== d[col])) ghi.push(`<span class="t-nhap-chu">← bản nháp chưa commit</span>`);
+      if (khoa_dong[key]) ghi.push(veChip(khoa_dong[key]));
+      hang.push({ o, duoi: ghi.length ? "  " + ghi.join(" ") : "" });
+    }
+    for (const [key, c] of commit) {
+      if (t.moi_nhat.some(d => String(d[pk]) === key)) continue;
+      hang.push({ o: cot.map(col => ({ t: chuO(c[col]), so: laSo(c[col]), lop: "t-xoa" })),
+                  duoi: `  <span class="t-nhap-chu">✗ đã xóa, chưa commit</span>` });
+    }
+    let s = bangAscii(cot, hang);
+    if (khoa_dong["∞"]) s += `\n  ${veChip(khoa_dong["∞"])} <span class="t-mo">trên khoảng trống sau dòng cuối (supremum)</span>`;
+    return s;
+  }
+
+  function khoaDuoiCsdl(khoa, cho) {
+    const dong = khoa.filter(k => k.loai_khoa === "RECORD");
+    let s = `<span class="t-lenh-qs">mysql&gt; SELECT phien, object_name, index_name, lock_mode, lock_status, lock_data
+    -&gt; FROM performance_schema.data_locks WHERE lock_type = 'RECORD';</span>\n`;
+    if (!dong.length) s += `Empty set (0.00 sec)  <span class="t-mo">-- không phiên nào đang giữ khóa dòng</span>`;
+    else {
+      s += bangAscii(["phien", "object_name", "index_name", "lock_mode", "lock_status", "lock_data"], dong.map(k => ({
+        o: [k.phien, k.bang, k.chi_muc || "NULL", k.che_do_khoa, k.trang_thai, chuO(k.du_lieu)].map((t, i) => ({
+          t: chuO(t), lop: i === 0 ? `t-p${k.phien}` : i === 4 && t === "WAITING" ? "t-loi" : "" })),
+        lop: k.trang_thai === "WAITING" ? "t-dong-cho" : "",
+      }))) + `\n${soDong(dong.length)} in set`;
+    }
+    const so_bang = khoa.length - dong.length;
+    if (so_bang) s += `\n<span class="t-mo">-- (không hiện ${so_bang} khóa ý định mức bảng IX/IS)</span>`;
+    s += `<span class="qs-cho"><span class="t-lenh-qs">\n\nmysql&gt; SELECT … FROM performance_schema.data_lock_waits;</span>\n`;
+    s += cho.length
+      ? bangAscii(["phien_dang_cho", "phien_dang_giu"], cho.map(c => ({
+          o: [{ t: c.phien_cho, lop: `t-p${c.phien_cho}` }, { t: c.phien_giu, lop: `t-p${c.phien_giu}` }],
+          duoi: `  <span class="t-mo">${esc(c.phien_cho)} đứng chờ tới khi ${esc(c.phien_giu)} commit / rollback</span>` })))
+        + `\n${soDong(cho.length)} in set`
+      : `Empty set (0.00 sec)  <span class="t-mo">-- không phiên nào phải chờ</span>`;
+    return s + `</span>`;
+  }
+
+  function veQuanSat(e, hoat_hinh) {
+    const tt = trangThaiKhung(khung);
+    const tt_truoc = khung > 0 ? trangThaiKhung(khung - 1) : null;
+    const khoa = e ? e.khoa || [] : [];
+    const cho = e ? e.cho || [] : [];
+    const so_khoa = khoa.filter(k => k.loai_khoa === "RECORD").length;
+    const bang = kq.bang.map(ten => `<span class="t-lenh-qs">mysql&gt; SELECT * FROM ${esc(ten)};</span>\n`
+      + bangDuoiCsdl(ten, tt[ten], tt_truoc ? tt_truoc[ten] : null, khoa)).join("\n\n");
+    return dauTerm("🗄 Dưới CSDL – dữ liệu thật trong InnoDB",
+      khung ? `ảnh chụp ngay sau bước <b>t${khung}</b>` : "trạng thái ban đầu <b>t0</b>",
+      cho.length ? "chan" : so_khoa ? "mo" : "", cho.length ? `⏳ ${cho.length} phiên đang chờ khóa` : so_khoa ? `🔒 ${so_khoa} khóa dòng` : "không có khóa")
+      + `<div class="qs-luoi ${hoat_hinh ? "tre" : ""}">
+        <div class="term-than qs-o"><div class="qs-nhan">Nội dung bảng</div>${bang}</div>
+        <div class="term-than qs-o"><div class="qs-nhan">Khóa của InnoDB</div>${khoaDuoiCsdl(khoa, cho)}</div></div>
+      <div class="qs-chu-giai"><span><span class="t-nhap">7→6</span> đã commit → bản nháp chưa commit (phiên khác đọc thường vẫn thấy 7)</span>
+        <span><span class="t-vua-doi">ô sáng</span> vừa đổi ở bước này</span>
+        <span><span class="chip A">🔒 A X</span> đang giữ khóa · <span class="chip B cho" style="animation:none">⏳ B X</span> đang chờ</span></div>`;
+  }
+
+  function veManHinhMysql(e, hoat_hinh) {
+    const sai = kq.loai === "sai";
+    $("#xd-mysql").className = "man-hinh-mysql " + (sai ? "kb-la-sai" : "kb-la-dung");
+    for (const p of ["A", "B"]) {
+      const o = $(`#xd-term-${p}`);
+      o.innerHTML = veTerm(p, e);
+      o.classList.toggle("dang-go-lenh", !!e && e.phien === p);
+      const than = o.querySelector(".term-than");
+      than.scrollTop = than.scrollHeight;
+    }
+    $("#xd-qs").innerHTML = veQuanSat(e, hoat_hinh);
+    ganChuThich("#xd-mysql");
+    $$("#xd-mysql .khoi[data-k]").forEach(k => k.addEventListener("click", () => { dungPhat(); toi(+k.dataset.k); }));
+    if (hoat_hinh && e) goLenh(e);
+  }
+
+  /** Hiệu ứng gõ câu lệnh vào cửa sổ, rồi mới hiện kết quả MySQL trả về. */
+  function goLenh(e) {
+    const luot = luot_hoat_hinh;
+    const term = $(`#xd-term-${e.phien}`);
+    const khoi = term && term.querySelector(".khoi.hien");
+    if (!khoi) return;
+    const than = term.querySelector(".term-than");
+    const ra = khoi.querySelector(".t-ra");
+    if (e.loai === "xong_sau_chan" || e.loai === "hoan") { ra && ra.classList.add("t-hien-ra"); return; }
+    const sql_el = khoi.querySelector(".t-sql");
+    if (!sql_el || !sql_el.dataset.sql) return;
+    const html_day = sql_el.innerHTML, chu = sql_el.dataset.sql;
+    const an = [...khoi.querySelectorAll(".t-kh, .t-diem")];
+    const cho_go = term.querySelector(".t-cho-go");
+    an.forEach(x => (x.style.visibility = "hidden"));
+    if (ra) ra.style.display = "none";
+    if (cho_go) cho_go.style.display = "none";
+    sql_el.textContent = "";
+    sql_el.classList.add("dang-go");
+    const nhip = Math.max(5, 14 / toc_do), moi_lan = 2;
+    let i = 0;
+    const go = () => {
+      if (luot !== luot_hoat_hinh) return;
+      i = Math.min(chu.length, i + moi_lan);
+      sql_el.textContent = chu.slice(0, i);
+      if (i < chu.length) { setTimeout(go, nhip); return; }
+      sql_el.innerHTML = html_day;
+      sql_el.classList.remove("dang-go");
+      an.forEach(x => (x.style.visibility = ""));
+      setTimeout(() => {
+        if (luot !== luot_hoat_hinh) return;
+        if (ra) { ra.style.display = ""; ra.classList.add("t-hien-ra"); }
+        if (cho_go) cho_go.style.display = "";
+        than.scrollTop = than.scrollHeight;
+      }, 220 / toc_do);
+    };
+    go();
+  }
+
+  function datCheDoXem(c) {
+    che_do_xem = c;
+    try { localStorage.setItem("xd-che-do", c); } catch { /* bỏ qua */ }
+    $$("#xd-che-do button").forEach(b => b.classList.toggle("dang-chon", b.dataset.xem === c));
+    $("#xd-mysql").hidden = c !== "mysql";
+    $("#xd-san-khau").hidden = c !== "lich";
+    $("#xd-che-do-phu").textContent = c === "mysql"
+      ? "Hai cửa sổ dòng lệnh của hai phiên + dữ liệu thật dưới CSDL sau mỗi bước"
+      : "Lịch giao tác T₁ | T₂ theo thời gian, như vẽ trên bảng";
+    if (kq) veKhung();
+  }
+  $$("#xd-che-do button").forEach(b => b.addEventListener("click", () => datCheDoXem(b.dataset.xem)));
+
+  /* ------------------------------------------------------------ bàn điều khiển: xem CSDL thật + Reset */
+  const GOI_Y = [
+    "SELECT * FROM chuyen_bay",
+    "SELECT * FROM ve",
+    "SELECT * FROM ghe",
+    "SELECT object_name, index_name, lock_mode, lock_status, lock_data FROM performance_schema.data_locks",
+  ];
+  const nhatKyBdk = () => $("#xd-bdk-log");
+  function inBdk(html) {
+    const l = nhatKyBdk();
+    l.insertAdjacentHTML("beforeend", html);
+    ganChuThich("#xd-bdk-log .khoi:last-child");
+    l.scrollTop = l.scrollHeight;
+    return l.lastElementChild;
+  }
+  const dongLenh = sql => `<div class="t-lenh"><span class="t-nhac">mysql&gt;</span> <span class="t-sql">${toMauSql(sql)};</span></div>`;
+
+  function inDuLieu(r, chu_thich) {
+    let s = `<div class="khoi"><div class="t-chu-thich">-- ${esc(chu_thich)} · ${new Date().toLocaleTimeString("vi-VN")}</div>`;
+    for (const [ten, t] of Object.entries(r.trang_thai || {})) {
+      s += dongLenh(`SELECT * FROM ${ten}`) + `<div class="t-ra">${bangDuoiCsdl(ten, t, null, r.khoa || [])}\n${soDong(t.moi_nhat.length)} in set</div>`;
+    }
+    const dong_khoa = (r.khoa || []).filter(k => k.loai_khoa === "RECORD");
+    s += `<div class="t-ra t-mo">-- ${dong_khoa.length ? `${dong_khoa.length} khóa dòng đang được giữ` : "không có khóa nào đang được giữ"}</div>`;
+    inBdk(s + `</div>`);
+  }
+
+  async function chayTruyVan(sql) {
+    const khoi = inBdk(`<div class="khoi">${dongLenh(sql)}<div class="t-ra t-cho"><span class="t-xoay"></span>đang chạy…</div></div>`);
+    const ra = khoi.querySelector(".t-ra");
+    try {
+      const r = await goiApi("/api/csdl/truy-van", { sql });
+      ra.className = "t-ra t-hien-ra";
+      if (r.loi) ra.innerHTML = loiMysql(r.loi);
+      else if (!r.dong.length) ra.innerHTML = `Empty set ${giay(r.thoi_gian_ms)}`;
+      else ra.innerHTML = `${bangTuDong(r.cot, r.dong)}\n${soDong(r.so_dong)} in set ${giay(r.thoi_gian_ms)}`
+        + (r.cat_bot ? `  <span class="t-mo">-- chỉ hiện ${r.so_dong} dòng đầu</span>` : "");
+    } catch (err) {
+      ra.className = "t-ra";
+      ra.innerHTML = `<span class="t-loi">${esc(err.message)}</span>`;
+    }
+    nhatKyBdk().scrollTop = nhatKyBdk().scrollHeight;
+  }
+
+  $("#xd-bdk-goi-y").innerHTML = `<span>Thử nhanh:</span>` + GOI_Y.map(s =>
+    `<button type="button" class="phu nho" data-sql="${esc(s)}">${esc(s.length > 42 ? s.slice(0, 40) + "…" : s)}</button>`).join("");
+  $$("#xd-bdk-goi-y button").forEach(b => b.addEventListener("click", () => chayTruyVan(b.dataset.sql)));
+  $("#xd-bdk-form").addEventListener("submit", ev => {
+    ev.preventDefault();
+    const o = $("#xd-bdk-sql");
+    const sql = o.value.trim().replace(/;+\s*$/, "");
+    if (!sql) return;
+    o.value = "";
+    chayTruyVan(sql);
+  });
+  $("#xd-xoa-bdk").addEventListener("click", () => { nhatKyBdk().innerHTML = ""; });
+  $("#xd-hien-tai").addEventListener("click", async () => {
+    try { inDuLieu(await goiApi("/api/csdl/hien-tai"), "Dữ liệu đang có trong CSDL"); }
+    catch (err) { inBdk(`<div class="khoi"><div class="t-ra"><span class="t-loi">${esc(err.message)}</span></div></div>`); }
+  });
+  $("#xd-dat-lai").addEventListener("click", async () => {
+    dungPhat();
+    await chayCo($("#xd-dat-lai"), $("#xd-trang-thai"), "Đang nạp lại dữ liệu ban đầu…", async () => {
+      const r = await goiApi("/api/csdl/dat-lai", {});
+      inBdk(`<div class="khoi"><div class="t-chu-thich">-- ↺ RESET: xóa mọi thay đổi do các lần chạy trước để lại</div>
+        <div class="t-ra t-ok">Query OK – đã nạp lại dữ liệu ban đầu cho ${Object.keys(r.trang_thai || {}).map(esc).join(", ")}</div></div>`);
+      inDuLieu(r, "Dữ liệu sau khi reset");
+      if (kq) toi(0);
+    });
+    $("#xd-bdk").scrollIntoView({ block: "nearest", behavior: "smooth" });
+  });
+  inBdk(`<div class="khoi"><div class="t-mo">Phiên quan sát – một kết nối riêng, chạy câu đọc ở READ COMMITTED trong giao tác READ ONLY:
+không đặt khóa nên không làm ảnh hưởng kịch bản nào, và luôn thấy bản đã commit mới nhất.
+Gõ một câu SELECT rồi Enter, hoặc bấm một gợi ý bên dưới.</div></div>`);
+
+  /* ------------------------------------------------------------ mã nguồn SAI | ĐÚNG */
+  function veMaNguon() {
+    const x = DS[ma];
+    if (!x) return;
+    const cot = l => {
+      const kb = x.kich_ban[l];
+      const khoi = p => {
+        const ds = kb.ma_nguon[p] || [];
+        const dong = d => {
+          const cm = [d.ky_hieu, d.diem_khac ? (l === "sai" ? "← nguyên nhân" : "← cách sửa") : ""].filter(Boolean).join("   ");
+          return `<div class="mn-dong ${d.diem_khac ? "khac" : ""}"><span class="t-sql">${toMauSql(d.sql)};</span>${cm ? `<span class="mn-cm">-- ${esc(cm)}</span>` : ""}</div>`;
+        };
+        const chinh = ds.filter(d => !d.kiem_tra), kt = ds.filter(d => d.kiem_tra);
+        return `<div class="mn-phien ${p}"><div class="t-chu-thich">-- ===== Phiên ${p} · ${TEN_PHIEN[p]} (${p === "A" ? "T₁" : "T₂"}) =====</div>${chinh.map(dong).join("")}
+          ${kt.length ? `<div class="t-chu-thich">-- kiểm tra sau khi cả hai kết thúc</div>${kt.map(dong).join("")}` : ""}</div>`;
+      };
+      return `<div class="mn-cot ${l}"><div class="mn-dau"><b>${l === "sai" ? "✗ Kịch bản SAI" : "✓ Kịch bản ĐÚNG"}</b>
+          <span>${esc(kb.tieu_de)}</span></div>
+        <div class="term"><div class="term-than mn-than">${khoi("A")}${khoi("B")}</div></div></div>`;
+    };
+    $("#xd-ma-nguon").innerHTML = `<div class="mn-luoi">${cot("sai")}${cot("dung")}</div>
+      <div class="ket-luan trung" style="margin-top:12px"><b>Khác biệt:</b> ${esc(x.khac_biet)}</div>`;
+  }
+
+  /* ------------------------------------------------------------ tự kiểm chứng trên phpMyAdmin */
+  const TU_KHOA_TT = /\b(CREATE PROCEDURE|BEGIN|END|DECLARE|INT|VARCHAR|CALL|DO SLEEP|INTO|SET SESSION|SET TRANSACTION ISOLATION LEVEL|START TRANSACTION|SELECT|FROM|WHERE|FOR UPDATE|UPDATE|SET|INSERT INTO|VALUES|COMMIT|ROLLBACK|AND|AS|ORDER BY|COUNT|GROUP_CONCAT|SEPARATOR|ROW_COUNT)\b/g;
+  const toMauThuTuc = sql => sql.split("\n").map(dong => {
+    const i = dong.indexOf("--");
+    const ma_ = i < 0 ? dong : dong.slice(0, i), cm = i < 0 ? "" : dong.slice(i);
+    return esc(ma_).replace(TU_KHOA_TT, '<span class="tk">$1</span>')
+      .replace(/\b(READ UNCOMMITTED|READ COMMITTED|REPEATABLE READ|SERIALIZABLE)\b/g, '<span class="tt-muc">$1</span>')
+      + (cm ? `<span class="t-mo">${esc(cm)}</span>` : "");
+  }).join("\n");
+
+  function nutChep(sql) {
+    return `<button type="button" class="phu nho nut-chep" data-chep="${esc(sql)}" title="Sao chép để dán vào ô SQL của phpMyAdmin">⧉ Chép</button>`;
+  }
+
+  function veThuTuc() {
+    const o = $("#xd-pma");
+    if (!THU_TUC || !THU_TUC[ma]) return;
+    const x = THU_TUC[ma], kb = x[loai];
+    const sai = loai === "sai";
+    const lenh = (so_, tieu_de, sql, phu) => `<div class="pma-buoc"><span class="pma-so">${so_}</span>
+      <div><b>${tieu_de}</b>${phu ? `<span class="pma-phu">${phu}</span>` : ""}
+        ${sql ? `<div class="pma-lenh"><code>${esc(sql)}</code>${nutChep(sql)}</div>` : ""}</div></div>`;
+    const ma_tt = t => `<div class="pma-tt"><div class="pma-tt-dau"><b>${t}</b> <code>${esc(kb[t].ten)}</code>
+        <span>${esc(x.vai_tro[t])}</span></div>
+      <div class="term"><pre class="term-than pma-code">${toMauThuTuc(kb[t].sql)}</pre></div></div>`;
+    o.innerHTML = `<div class="pma-kb ${loai}"><b>${sai ? "✗ Kịch bản SAI" : "✓ Kịch bản ĐÚNG"}</b>
+        – đổi kịch bản bằng hai nút SAI / ĐÚNG ở trên. Thủ tục đã được ứng dụng tạo sẵn trong CSDL <code>demo_dongthoi</code>.</div>
+      <div class="pma-luoi">
+        <div class="pma-cac-buoc">
+          ${lenh(1, "Đặt lại dữ liệu ban đầu", `CALL ${THU_TUC._dat_lai.ten}();`, "hoặc bấm ↺ Reset dữ liệu CSDL ở trên")}
+          ${lenh(2, "Tab phpMyAdmin thứ nhất → tab SQL → dán, bấm Go", `CALL ${kb.T1.ten}();`,
+                 `T1 sẽ chạy khoảng ${x.giay_cho} giây (đang “ngủ” giữa giao tác)`)}
+          ${lenh(3, `Trong vòng ${x.giay_cho} giây: tab phpMyAdmin thứ hai → dán, bấm Go`, `CALL ${kb.T2.ten}();`,
+                 "mở tab mới bằng Ctrl + nhấp vào nút “Mở phpMyAdmin”")}
+          ${lenh(4, "Đợi T1 xong rồi xem dữ liệu thật", `${x.kiem_tra};`, "hoặc mở bảng ở cột trái phpMyAdmin → Browse")}
+          <div class="pma-ky-vong ${loai}"><b>Kết quả sẽ thấy:</b> ${esc(kb.ky_vong)}</div>
+        </div>
+        <div class="pma-hai-tt">${ma_tt("T1")}${ma_tt("T2")}</div>
+      </div>`;
+    $$("#xd-pma .nut-chep").forEach(b => b.addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(b.dataset.chep); b.textContent = "✓ Đã chép"; }
+      catch { b.textContent = "Chép tay giúp"; }
+      setTimeout(() => (b.textContent = "⧉ Chép"), 1600);
+    }));
+  }
+
+  datCheDoXem(che_do_xem);
+
   /* ------------------------------------------------------------ hoạt hình */
   function toaDo(p, k) {
     const sk = $("#xd-san-khau").getBoundingClientRect();
@@ -629,7 +1064,7 @@
 
   /** Mỗi phiên đang bị chặn có một viên "⏳" đứng chờ trước cửa CSDL, ngang hàng với câu lệnh bị chặn. */
   function veVienCho(tru = null) {
-    if (manHinhHep() || !kq) return;
+    if (manHinhHep() || !kq || che_do_xem !== "lich") return;
     for (const p of ["A", "B"]) {
       const chan = Object.values(suKienTheoBuoc(p)).find(x => x.loai === "bi_chan");
       if (!chan || chan === tru) continue;
@@ -639,7 +1074,7 @@
   }
 
   function hoatHinh(e) {
-    if (manHinhHep()) return;
+    if (manHinhHep() || che_do_xem !== "lich") return;
     const luot = luot_hoat_hinh;
     const con_hieu_luc = () => luot === luot_hoat_hinh;
     veVienCho(e);

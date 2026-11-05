@@ -155,7 +155,7 @@
   <section id="tab-xungdot">
     <div class="the">
       <h2>⚡ 5 Xung Đột Kinh Điển – Kịch bản SAI và Kịch bản ĐÚNG</h2>
-      <p class="phu-de">Hai phiên giao tác A và B chạy xen kẽ trên MySQL 9.6 thật. Sau mỗi bước, hệ thống chụp lại dữ liệu và bảng khóa của InnoDB, rồi phát lại thành hoạt hình: code mỗi phiên đang chạy tới đâu, dữ liệu thay đổi thế nào, ai đang giữ khóa nào.</p>
+      <p class="phu-de">Hai phiên giao tác A và B chạy xen kẽ trên MySQL 9.6 thật. Mỗi câu lệnh hiện trên cửa sổ <code>mysql&gt;</code> của phiên gửi nó, kèm kết quả MySQL trả về; ngay bên dưới là dữ liệu và bảng khóa thật của InnoDB sau từng bước – dữ liệu thay đổi thế nào, ai đang giữ khóa nào.</p>
       <div class="ds-xd" id="xd-ds"></div>
     </div>
 
@@ -177,22 +177,23 @@
         <div class="hd-luoi">
           <div class="hd-o">
             <div class="hd-so">1</div>
-            <b>Bảng giữa là "lịch giao tác"</b>
-            <p>Đọc từ trên xuống như dòng thời gian. Mỗi hàng là một thời điểm <code>t1, t2…</code>; cột trái là việc
-              phiên A làm, cột phải là việc phiên B làm – giống hệt cách vẽ lịch giao tác T₁, T₂ trên bảng.</p>
+            <b>Hai cửa sổ <code>mysql&gt;</code> là hai kết nối thật</b>
+            <p>Phiên A (quầy vé) và phiên B (app) là hai kết nối riêng tới cùng một MySQL. Mỗi bước, câu SQL được gõ
+              vào cửa sổ của phiên đó và MySQL trả kết quả y như dòng lệnh thật: bảng kết quả, <code>Query OK</code>,
+              <code>Rows matched</code>, <code>ERROR 1213</code>…</p>
           </div>
           <div class="hd-o">
             <div class="hd-so">2</div>
-            <b>Thanh dọc = giao tác đang mở</b>
-            <p><span class="hd-song A"></span> giao tác của A đang mở &nbsp; <span class="hd-song B"></span> của B &nbsp;
-              <span class="hd-song cho"></span> đang bị chặn, chờ khóa. Hai thanh chạy song song nghĩa là hai giao tác
-              đang <b>đồng thời</b>.</p>
+            <b>⏳ = câu lệnh chưa trả về</b>
+            <p>Khi InnoDB bắt một phiên chờ khóa, cửa sổ của phiên đó đứng im – không có dấu nhắc <code>mysql&gt;</code>
+              mới – cho tới khi phiên kia commit/rollback. Phiên còn lại vẫn chạy bình thường.</p>
           </div>
           <div class="hd-o">
             <div class="hd-so">3</div>
-            <b>Bên phải là dữ liệu thật trong InnoDB</b>
-            <p><span class="gt-cu">7</span><span class="gt-moi">0</span> = đã commit → bản nháp chưa commit.
-              🔒 = khóa đang giữ, ⏳ = đang chờ khóa. Rê chuột lên khóa để xem giải thích.</p>
+            <b>Bên dưới là dữ liệu thật trong InnoDB</b>
+            <p><span class="t-nhap-mau">7→6</span> = đã commit → bản nháp chưa commit; bảng <code>data_locks</code> cho
+              biết ai đang giữ / chờ khóa nào. Gõ SELECT ở bàn điều khiển để tự kiểm tra, bấm <b>↺ Reset</b> để nạp lại
+              dữ liệu ban đầu.</p>
           </div>
         </div>
       </details>
@@ -209,6 +210,8 @@
         <span class="dem" id="xd-dem"></span>
         <span style="flex:1"></span>
         <button class="phu" id="xd-chay-lai" title="Chạy lại kịch bản trên MySQL">↻ Chạy lại trên MySQL</button>
+        <button class="nut-dat-lai" id="xd-dat-lai" data-khoa-khi-chay
+          title="Xóa mọi thay đổi do các lần chạy trước, nạp lại dữ liệu ban đầu của CSDL">↺ Reset dữ liệu CSDL</button>
         <span class="trang-thai" id="xd-trang-thai"></span>
       </div>
       <div class="tien-do" id="xd-tien-do"></div>
@@ -216,12 +219,63 @@
       <div class="giai-thich-buoc" id="xd-giai-thich"></div>
       <div class="lich-ky-hieu" id="xd-lich"></div>
 
-      <div class="san-khau-lich" id="xd-san-khau">
+      <div class="xd-che-do" id="xd-che-do" role="tablist" aria-label="Cách xem">
+        <button data-xem="mysql" class="dang-chon">🖥 Màn hình MySQL</button>
+        <button data-xem="lich">📋 Lịch giao tác</button>
+        <span class="xd-che-do-phu" id="xd-che-do-phu"></span>
+      </div>
+
+      <div class="man-hinh-mysql" id="xd-mysql">
+        <div class="mh-hai-phien">
+          <div class="term term-A" id="xd-term-A"></div>
+          <div class="term term-B" id="xd-term-B"></div>
+        </div>
+        <div class="term term-qs" id="xd-qs"></div>
+      </div>
+
+      <div class="san-khau-lich" id="xd-san-khau" hidden>
         <div class="lich-gt" id="xd-lich-gt"></div>
         <div class="csdl" id="xd-csdl"></div>
         <div class="lop-hoat-hinh" id="xd-lop" aria-hidden="true"></div>
       </div>
       <div id="xd-ket-luan"></div>
+
+      <div class="term term-bdk" id="xd-bdk">
+        <div class="term-dau"><span class="cham-mau"><i></i><i></i><i></i></span>
+          <b>🔎 Bàn điều khiển – tự xem dữ liệu dưới CSDL</b>
+          <span class="term-phu" id="xd-bdk-phu">kết nối thật tới MySQL · chỉ cho phép SELECT · không đặt khóa</span>
+          <span style="flex:1"></span>
+          <button class="phu nho" id="xd-hien-tai" data-khoa-khi-chay>⟳ Dữ liệu hiện tại</button>
+          <button class="phu nho" id="xd-xoa-bdk">Xóa màn hình</button>
+        </div>
+        <div class="term-than" id="xd-bdk-log"></div>
+        <div class="bdk-goi-y" id="xd-bdk-goi-y"></div>
+        <form class="bdk-nhap" id="xd-bdk-form" autocomplete="off">
+          <span class="t-nhac">mysql&gt;</span>
+          <input id="xd-bdk-sql" spellcheck="false" placeholder="SELECT * FROM chuyen_bay" aria-label="Câu lệnh SELECT">
+          <button type="submit">Chạy ⏎</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="the" id="xd-the-ma">
+      <h2>📜 Mã nguồn hai kịch bản – SAI và ĐÚNG</h2>
+      <p class="phu-de">Toàn bộ câu SQL mỗi phiên gửi lên MySQL. Dòng tô sáng là chỗ khác nhau giữa hai kịch bản.</p>
+      <div id="xd-ma-nguon"></div>
+    </div>
+
+    <div class="the" id="xd-the-pma">
+      <div class="pma-dau">
+        <div style="min-width:0">
+          <h2>🧪 Tự kiểm chứng trên phpMyAdmin – CSDL thật, không qua demo</h2>
+          <p class="phu-de" style="margin-bottom:0">Làm theo cách của bài giảng SQL Server (<code>WAITFOR DELAY</code>):
+            mỗi giao tác là một thủ tục, T1 có <code>DO SLEEP(10)</code> để giữ giao tác mở 10 giây. Trong 10 giây đó
+            mở tab phpMyAdmin thứ hai và gọi T2 – hai giao tác chạy đan xen thật trên MySQL.</p>
+        </div>
+        <a class="nut-pma" id="xd-mo-pma" target="_blank" rel="noopener"
+           href="http://localhost:8081/index.php?route=/database/sql&amp;db=demo_dongthoi">🗄 Mở phpMyAdmin ↗</a>
+      </div>
+      <div id="xd-pma"></div>
     </div>
 
     <div class="the an" id="xd-the-ss">

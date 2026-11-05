@@ -57,7 +57,92 @@
 
   const cho = ms => new Promise(r => setTimeout(r, ms));
 
+  /* ---------------------------------------------------------------- màn hình MySQL: CSDL giả lập trong trình duyệt
+   * Không có MySQL nên "dữ liệu hiện tại" là trạng thái cuối của lần phát lại gần nhất (đã chạy thật và ghi sẵn);
+   * nút Reset đưa về dữ liệu ban đầu đã ghi; ô SELECT chỉ hiểu câu đơn giản trên ba bảng đó. */
+  const sao = o => JSON.parse(JSON.stringify(o));
+  let csdl_web = null;          // {trang_thai, khoa, cho}
+
+  async function csdlHienTai() {
+    if (!csdl_web) csdl_web = sao(await taiDuLieu("csdl-ban-dau"));
+    return csdl_web;
+  }
+
+  function capNhatSauPhatLai(kq) {
+    if (!csdl_web || !kq || !kq.nhat_ky || !kq.nhat_ky.length) return;
+    const cuoi = kq.nhat_ky[kq.nhat_ky.length - 1].trang_thai || {};
+    for (const [bang, t] of Object.entries(cuoi)) {
+      csdl_web.trang_thai[bang] = sao({ ...t, moi_nhat: t.da_commit });
+    }
+    csdl_web.khoa = [];
+    csdl_web.cho = [];
+  }
+
+  const CHI_DOC = /^(SELECT|SHOW|DESCRIBE|DESC|EXPLAIN|WITH)\b/i;
+  const CAM = /\bFOR\s+(UPDATE|SHARE)\b|\bLOCK\s+IN\s+SHARE\s+MODE\b|\bINTO\b|\bSLEEP\s*\(|\bGET_LOCK\s*\(/i;
+
+  async function truyVanWeb(sql) {
+    const cau = String(sql || "").trim().replace(/;+\s*$/, "").trim();
+    if (!cau) throw new Error("Hãy nhập một câu lệnh, ví dụ: SELECT * FROM chuyen_bay");
+    if (cau.includes(";")) throw new Error("Mỗi lần chỉ chạy một câu lệnh.");
+    if (!CHI_DOC.test(cau) || CAM.test(cau)) {
+      throw new Error("Ô này chỉ để xem dữ liệu: chỉ cho phép SELECT / SHOW / DESCRIBE / EXPLAIN (không FOR UPDATE, không INTO).");
+    }
+    const t0 = performance.now();
+    const db = await csdlHienTai();
+    const m = cau.match(/^SELECT\s+(.+?)\s+FROM\s+([\w.]+)(?:\s+WHERE\s+(.+?))?(?:\s+ORDER\s+BY\s+(\w+)(?:\s+(ASC|DESC))?)?$/i);
+    const khong_ho_tro = { sql: cau, loi: { ma: 0, thong_diep: "Bản web không có MySQL: chỉ hiểu câu dạng SELECT cột | * FROM bảng "
+      + "[WHERE cột = giá trị AND …] [ORDER BY cột]. Chạy bản đầy đủ (khoi-dong.bat) để gõ câu bất kỳ." } };
+    if (!m) return khong_ho_tro;
+    const ten_bang = m[2].toLowerCase();
+    if (ten_bang === "performance_schema.data_locks" || ten_bang === "performance_schema.data_lock_waits") {
+      const cot = m[1].trim() === "*" ? ["object_name", "index_name", "lock_type", "lock_mode", "lock_status", "lock_data"]
+        : m[1].split(",").map(c => c.trim());
+      return { sql: cau, cot, dong: [], so_dong: 0, thoi_gian_ms: 0.1, cat_bot: false };
+    }
+    const t = db.trang_thai[ten_bang];
+    if (!t) return { sql: cau, loi: { ma: 1146, thong_diep: `Table 'demo_dongthoi.${m[2]}' doesn't exist` } };
+    let dong = sao(t.da_commit);
+    const tat_ca_cot = Object.keys(dong[0] || {});
+    if (m[3]) {
+      const dk = m[3].split(/\s+AND\s+/i).map(x => x.match(/^(\w+)\s*(=|>|<|>=|<=|<>|!=)\s*'?([^']*?)'?$/));
+      if (dk.some(x => !x)) return khong_ho_tro;
+      dong = dong.filter(d => dk.every(([, c, op, v]) => {
+        const a = d[c], b = typeof a === "number" ? Number(v) : v;
+        return { "=": a == b, ">": a > b, "<": a < b, ">=": a >= b, "<=": a <= b, "<>": a != b, "!=": a != b }[op];
+      }));
+    }
+    if (m[4]) {
+      const c = m[4], g = (m[5] || "").toUpperCase() === "DESC" ? -1 : 1;
+      dong.sort((x, y) => (x[c] > y[c] ? g : x[c] < y[c] ? -g : 0));
+    }
+    const cot = m[1].trim() === "*" ? tat_ca_cot : m[1].split(",").map(c => c.trim().split(/\s+AS\s+/i).pop());
+    const goc = m[1].trim() === "*" ? tat_ca_cot : m[1].split(",").map(c => c.trim().split(/\s+AS\s+/i)[0]);
+    if (goc.some(c => !tat_ca_cot.includes(c))) {
+      const sai = goc.find(c => !tat_ca_cot.includes(c));
+      return { sql: cau, loi: { ma: 1054, thong_diep: `Unknown column '${sai}' in 'field list'` } };
+    }
+    dong = dong.map(d => Object.fromEntries(cot.map((c, i) => [c, d[goc[i]]])));
+    return { sql: cau, cot, dong, so_dong: dong.length, thoi_gian_ms: Math.round((performance.now() - t0) * 10) / 10,
+             cat_bot: false };
+  }
+
   window.goiApi = async (url, than) => {
+    if (url === "/api/csdl/hien-tai") return sao(await csdlHienTai());
+    if (url === "/api/csdl/dat-lai") {
+      csdl_web = sao(await taiDuLieu("csdl-ban-dau"));
+      await cho(250);
+      return sao(csdl_web);
+    }
+    if (url === "/api/csdl/truy-van") return truyVanWeb(than && than.sql);
+    if (url === "/api/thu-tuc") return sao(await taiDuLieu("thu-tuc"));
+    if (url === "/api/xung-dot/chay") {
+      await csdlHienTai();
+      const kq = await taiDuLieu(khoaCua(url, than));
+      await cho(350);
+      capNhatSauPhatLai(kq);
+      return sao(kq);
+    }
     const khoa = khoaCua(url, than);
     // chờ một nhịp ngắn để người xem thấy trạng thái "đang tải" như khi chạy thật
     const [d] = await Promise.all([taiDuLieu(khoa), cho(than === undefined ? 0 : 350)]);
@@ -140,5 +225,17 @@
   if (nut) {
     nut.textContent = "↻ Phát lại kết quả";
     nut.title = "Bản web: phát lại kết quả đã chạy thật trên MySQL";
+  }
+  // màn hình MySQL: không có CSDL thật nên bàn điều khiển chạy trên dữ liệu đã ghi; phpMyAdmin chỉ có ở bản chạy trên máy
+  const phu_bdk = document.getElementById("xd-bdk-phu");
+  if (phu_bdk) phu_bdk.textContent = "bản web: dữ liệu đã ghi từ MySQL thật · chỉ hiểu SELECT đơn giản";
+  const pma = document.getElementById("xd-mo-pma");
+  if (pma) {
+    pma.classList.add("tat");
+    pma.removeAttribute("href");
+    pma.textContent = "🗄 phpMyAdmin: chỉ có ở bản chạy trên máy";
+    pma.insertAdjacentHTML("afterend", `<p class="ghi-chu-web" style="flex-basis:100%">Bản web không có MySQL. Tải mã nguồn
+      tại <a href="https://github.com/thanhvuaws-jpg/hequantricosodemodongthoi" target="_blank" rel="noopener">GitHub</a>,
+      chạy <code>khoi-dong.bat</code> rồi mở <code>http://localhost:8081</code> để tự chạy các thủ tục dưới đây trên CSDL thật.</p>`);
   }
 })();

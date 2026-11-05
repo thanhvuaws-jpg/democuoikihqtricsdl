@@ -71,9 +71,15 @@ def main():
     print("Tab 1 – năm xung đột")
     ds = goi("/api/xung-dot")
     luu("xung-dot", ds)
-    for ma in ds["xung_dot"]:
-        for loai in ("sai", "dung"):
-            luu(f"xung-dot/{ma}_{loai}", goi("/api/xung-dot/chay", {"ma": ma, "loai": loai}))
+    if "--giu-xung-dot" not in sys.argv:
+        for ma in ds["xung_dot"]:
+            for loai in ("sai", "dung"):
+                luu(f"xung-dot/{ma}_{loai}", goi("/api/xung-dot/chay", {"ma": ma, "loai": loai}))
+    # màn hình MySQL: dữ liệu ban đầu (nút Reset) và mã nguồn các thủ tục chạy trên phpMyAdmin
+    luu("csdl-ban-dau", goi("/api/csdl/dat-lai", {}))
+    luu("thu-tuc", goi("/api/thu-tuc"))
+    if "--chi-tab1" in sys.argv:
+        return
 
     print("Tab 3 – ma trận mức cô lập")
     tn = goi("/api/thi-nghiem")
